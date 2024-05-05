@@ -31,7 +31,7 @@ You could also build this on a breadboard but I'm imagining most radio amateurs 
 
 ## Installing the firmware
 
-Download the `vband.uf2` file from [FIXME] first.
+Download the `vband.uf2` file from [the releases](https://github.com/ncw/vband/releases/latest) first.
 
 1. Unplug the Pico from the USB for 5 seconds
 2. Plug in while holding the button on the board
