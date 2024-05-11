@@ -36,59 +36,62 @@ void keyboard_resume_cb(void) {
 // USB HID
 //--------------------------------------------------------------------+
 
-// used to avoid sending multiple consecutive zero reports for the keyboard
-static bool keyboard_last_report_not_empty = false;
-
 static void keyboard_send_hid_report(uint8_t report_id) {
     // skip if hid is not ready yet
     if (!tud_hid_ready()) {
         return;
     }
 
+    // used to avoid sending multiple identical reports
+    static uint8_t last_report = 0;
+    const uint8_t dit_report = 0x01;
+    const uint8_t dah_report = 0x02;
+
+    // every 100ms force a report
+    const uint32_t interval_ms = 100;
+    static uint32_t start_ms = 0;
+    if ( board_millis() - start_ms >= interval_ms) {
+        last_report = 0xFF;     // set to a value which can't occur to force a resend
+        start_ms += interval_ms;
+    }
+
     switch(report_id) {
     case REPORT_ID_KEYBOARD: {
         uint8_t keycode[6] = {};
         int i = 0;
-        
+        uint8_t report = 0;
+
         // In Vband paddle mode we send left CTRL for dit and
         // right CTRL for dah
         if (keyer_dit) {
             keycode[i++] = HID_KEY_CONTROL_LEFT;
+            report |= dit_report;
         }
         if (keyer_dah) {
             keycode[i++] = HID_KEY_CONTROL_RIGHT;
+            report |= dah_report;
         }
-        
-        if (i != 0) {
-            tud_hid_keyboard_report(REPORT_ID_KEYBOARD, 0, keycode);
-            keyboard_last_report_not_empty = true;
-        } else {
-            // send empty key report if previously has key pressed
-            if (keyboard_last_report_not_empty) {
-                tud_hid_keyboard_report(REPORT_ID_KEYBOARD, 0, NULL);
-            }
-            keyboard_last_report_not_empty = false;
+
+        if (report != last_report) {
+                if (i != 0 ) {
+                    tud_hid_keyboard_report(REPORT_ID_KEYBOARD, 0, keycode);
+                } else {
+                    // send empty key report if previously has key pressed
+                    tud_hid_keyboard_report(REPORT_ID_KEYBOARD, 0, NULL);
+                }
+            last_report = report;
         }
     }
         break;
-        
+
     default:
         break;
     }
 }
 
-// Every 10ms, we will sent 1 report for each HID profile (keyboard, mouse etc ..)
+// Every 1ms, we will sent 1 report for each HID profile (keyboard, mouse etc ..)
 // tud_hid_report_complete_cb() is used to send the next report after previous one is complete
 void keyboard_task(void) {
-    // Poll every 10ms
-    const uint32_t interval_ms = 10;
-    static uint32_t start_ms = 0;
-
-    if ( board_millis() - start_ms < interval_ms) {
-        return; // not enough time
-    }
-    start_ms += interval_ms;
-
     // Remote wakeup
     if (tud_suspended() && (keyer_dit || keyer_dah || board_button_read())) {
         // Wake up host if we are in suspend mode
@@ -108,7 +111,7 @@ void tud_hid_report_complete_cb(uint8_t instance, uint8_t const* report, uint8_t
     (void) len;
 
     uint8_t next_report_id = report[0] + 1;
-    
+
     if (next_report_id < REPORT_ID_COUNT) {
         keyboard_send_hid_report(next_report_id);
     }
@@ -140,9 +143,9 @@ void tud_hid_set_report_cb(uint8_t instance, uint8_t report_id, hid_report_type_
             if ( bufsize < 1 ) {
                 return;
             }
-            
+
             uint8_t const kbd_leds = buffer[0];
-            
+
             if (kbd_leds & KEYBOARD_LED_CAPSLOCK) {
                 // Capslock On
             } else {
